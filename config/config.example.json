@@ -1,0 +1,13 @@
+{
+    "base_url": "https://snipeit.example.internal",
+    "printer_name": "Brother QL-800",
+    "label_path_template": "/hardware/{id}/label",
+    "browser": "chromium",
+    "print_method": "pdf_fallback",
+    "page_load_timeout_ms": 30000,
+    "print_job_timeout_sec": 30,
+    "pre_print_delay_sec": 0.5,
+    "label_width_mm": 62.0,
+    "label_height_mm": 29.0,
+    "asset_id_regex": "/hardware/(\\d+)(?:/|$)"
+}
