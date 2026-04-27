@@ -145,9 +145,11 @@ class LabelPrinterApp:
 
             self.root.after(0, lambda: self.set_status(f"Printed asset {asset_id}"))
         except (ConfigError, UrlParseError, BrowserRenderError, PrinterError) as exc:
-            self.root.after(0, lambda: self.set_status(str(exc), is_error=True))
+            error_message = str(exc)
+            self.root.after(0, lambda msg=error_message: self.set_status(msg, is_error=True))
         except Exception as exc:
-            self.root.after(0, lambda: self.set_status(f"Unexpected error: {exc}", is_error=True))
+            error_message = f"Unexpected error: {exc}"
+            self.root.after(0, lambda msg=error_message: self.set_status(msg, is_error=True))
         finally:
             if temp_pdf_path and temp_pdf_path.exists():
                 try:
@@ -187,8 +189,9 @@ class LabelPrinterApp:
             self.root.after(0, lambda: self.set_status("Diagnostics completed"))
             self.root.after(0, lambda: messagebox.showinfo("Diagnostics", report))
         except (ConfigError, UrlParseError, BrowserRenderError, PrinterError) as exc:
-            self.root.after(0, lambda: self.set_status(str(exc), is_error=True))
-            self.root.after(0, lambda: messagebox.showerror("Diagnostics Error", str(exc)))
+            error_message = str(exc)
+            self.root.after(0, lambda msg=error_message: self.set_status(msg, is_error=True))
+            self.root.after(0, lambda msg=error_message: messagebox.showerror("Diagnostics Error", msg))
         except Exception as exc:
             message = f"Unexpected error: {exc}"
             self.root.after(0, lambda: self.set_status(message, is_error=True))

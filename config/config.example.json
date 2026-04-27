@@ -1,5 +1,7 @@
 {
     "base_url": "https://snipeit.example.internal",
+    "auth_mode": "none",
+    "storage_state_path": "auth.json",
     "printer_name": "Brother QL-800",
     "label_path_template": "/hardware/{id}/label",
     "browser": "chromium",

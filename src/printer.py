@@ -1,8 +1,11 @@
 import time
 from pathlib import Path
 
-import win32api
+import fitz
+from PIL import Image, ImageWin
+import win32con
 import win32print
+import win32ui
 
 
 class PrinterError(Exception):
@@ -32,6 +35,88 @@ def _get_printer_job_count(printer_name: str) -> int:
         win32print.ClosePrinter(handle)
 
 
+def _load_pdf_first_page(pdf_file: Path) -> Image.Image:
+    try:
+        document = fitz.open(str(pdf_file))
+    except Exception as exc:
+        raise PrinterError(f"Failed to open PDF for printing: {exc}") from exc
+
+    try:
+        if document.page_count < 1:
+            raise PrinterError("PDF contains no pages")
+
+        page = document.load_page(0)
+        # Render at higher DPI so QR codes and small text stay sharp on labels.
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(3, 3), alpha=False)
+        return Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
+    except PrinterError:
+        raise
+    except Exception as exc:
+        raise PrinterError(f"Failed to rasterize PDF for printing: {exc}") from exc
+    finally:
+        document.close()
+
+
+def _trim_whitespace(image: Image.Image, threshold: int = 245, padding: int = 12) -> Image.Image:
+    grayscale = image.convert("L")
+    content_mask = grayscale.point(lambda pixel: 255 if pixel < threshold else 0)
+    bbox = content_mask.getbbox()
+
+    if bbox is None:
+        return image
+
+    left = max(0, bbox[0] - padding)
+    top = max(0, bbox[1] - padding)
+    right = min(image.width, bbox[2] + padding)
+    bottom = min(image.height, bbox[3] + padding)
+
+    if right <= left or bottom <= top:
+        return image
+
+    return image.crop((left, top, right, bottom))
+
+
+def _print_image_to_printer(image: Image.Image, printer_name: str) -> None:
+    image = _trim_whitespace(image.convert("RGB"))
+
+    dc = win32ui.CreateDC()
+    try:
+        dc.CreatePrinterDC(printer_name)
+
+        printable_width = dc.GetDeviceCaps(win32con.HORZRES)
+        printable_height = dc.GetDeviceCaps(win32con.VERTRES)
+
+        if printable_width <= 0 or printable_height <= 0:
+            raise PrinterError("Printer returned invalid printable dimensions")
+
+        # Preserve aspect ratio and center the label while fitting it to the sticker.
+        scale = min(printable_width / image.width, printable_height / image.height)
+        draw_width = max(1, int(image.width * scale))
+        draw_height = max(1, int(image.height * scale))
+        left = max(0, (printable_width - draw_width) // 2)
+        top = max(0, (printable_height - draw_height) // 2)
+        right = left + draw_width
+        bottom = top + draw_height
+
+        image = image.resize((draw_width, draw_height), Image.LANCZOS)
+
+        dc.StartDoc(f"Snipe-IT Label - {printer_name}")
+        dc.StartPage()
+        try:
+            dib = ImageWin.Dib(image)
+            dib.draw(dc.GetHandleOutput(), (left, top, right, bottom))
+        finally:
+            dc.EndPage()
+            dc.EndDoc()
+    except Exception as exc:
+        raise PrinterError(f"Direct printer rendering failed: {exc}") from exc
+    finally:
+        try:
+            dc.DeleteDC()
+        except Exception:
+            pass
+
+
 def print_pdf_to_printer(pdf_path: str | Path, printer_name: str, timeout_sec: int = 30) -> None:
     pdf_file = Path(pdf_path)
     if not pdf_file.exists():
@@ -41,18 +126,8 @@ def print_pdf_to_printer(pdf_path: str | Path, printer_name: str, timeout_sec: i
 
     initial_jobs = _get_printer_job_count(printer_name)
 
-    try:
-        # Uses the registered PDF handler and sends directly to the target printer.
-        win32api.ShellExecute(
-            0,
-            "printto",
-            str(pdf_file),
-            f'"{printer_name}"',
-            ".",
-            0,
-        )
-    except Exception as exc:
-        raise PrinterError(f"Windows print command failed: {exc}") from exc
+    image = _load_pdf_first_page(pdf_file)
+    _print_image_to_printer(image, printer_name)
 
     deadline = time.time() + timeout_sec
     saw_job = False
@@ -70,8 +145,6 @@ def print_pdf_to_printer(pdf_path: str | Path, printer_name: str, timeout_sec: i
         time.sleep(0.5)
 
     if not saw_job:
-        raise PrinterError(
-            "Print job did not appear in printer queue. Ensure a PDF viewer with print-to support is installed (Edge or Adobe Reader)."
-        )
+        raise PrinterError("Print job failed to reach printer. Check printer name and PDF handler.")
 
     raise PrinterError("Print job did not complete within timeout")

@@ -1,2 +1,4 @@
 playwright
 pywin32
+PyMuPDF
+Pillow

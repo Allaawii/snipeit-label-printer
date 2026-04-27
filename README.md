@@ -1,119 +1,143 @@
 # Snipe-IT Label Printer (Brother QL-800)
 
-## Description
-Snipe-IT Label Printer is a small Windows desktop tool for IT teams that print hardware asset labels from Snipe-IT.
+This app prints Snipe-IT hardware labels on Windows using a browser-rendered PDF flow:
 
-Instead of manually opening label pages, exporting files, and printing through multiple screens, this tool lets you paste a Snipe-IT hardware asset URL and print directly to a Brother QL-800.
+URL -> render label page with Playwright -> save PDF -> rasterize PDF -> send directly to the Brother printer.
 
-It is designed for internal operations where speed and consistency matter.
+It does not use the Snipe-IT API.
 
-## Features
-- Print label from hardware asset URL
-- Uses Snipe-IT built-in labels
-- Works with Brother QL-800
-- No modification to Snipe-IT required
-- Simple GUI + clipboard support
-- Diagnostics button to validate URL parsing, printer detection, and PDF rendering
+## Full Setup Guide (Step-by-Step)
 
-## Requirements
-- Windows 10 or Windows 11
-- Python 3.10+
-- Brother QL-800 installed and working in Windows
-- Snipe-IT accessible from the laptop
-
-## Project Structure
-snipeit-label-printer/
-- src/
-  - main.py
-  - browser.py
-  - printer.py
-  - utils.py
-- config/
-  - config.example.json
-  - config.json (local file, not committed)
-- logs/
-- README.md
-- requirements.txt
-- .gitignore
-- run.bat
-- LICENSE
-
-## Installation
-1. Clone this repository.
+### Step 1: Install Python
+1. Go to https://www.python.org/downloads/
 2. Install Python 3.10 or newer.
-3. Open Command Prompt or PowerShell in the project folder.
-4. Install dependencies:
-   - pip install -r requirements.txt
-5. Install Playwright browser runtime:
-   - playwright install
-6. Copy configuration template:
-   - copy config\config.example.json config\config.json
-7. Edit config\config.json:
-   - Set base_url to your Snipe-IT URL
-   - Set printer_name to the exact Windows printer name for your Brother QL-800
+3. During installation, enable Add Python to PATH.
+4. Open Command Prompt and verify:
 
-## How to Run
-- Command line:
-  - python src/main.py
-- Non-technical option:
-  - Double-click run.bat
+```powershell
+python --version
+```
 
-## How to Use
-1. Open a hardware asset in Snipe-IT.
-2. Copy the hardware asset URL.
-3. Paste the URL into the app.
+### Step 2: Clone repo
+Run these commands:
+
+```powershell
+git clone <repo_url>
+cd snipeit-label-printer
+```
+
+### Step 3: Create virtual environment
+
+```powershell
+python -m venv venv
+```
+
+### Step 4: Activate virtual environment
+Windows command:
+
+```powershell
+venv\Scripts\activate
+```
+
+### Step 5: Install dependencies
+
+```powershell
+pip install -r requirements.txt
+```
+
+### Step 6: Install Playwright browsers
+
+```powershell
+playwright install
+```
+
+### Step 7: Configure app
+1. Copy config file:
+
+```powershell
+copy config\config.example.json config\config.json
+```
+
+2. Open config\config.json and set:
+- base_url: your Snipe-IT base URL, for example https://snipeit.company.local
+- printer_name: must exactly match the printer name in Windows Printers
+- auth_mode: use storage_state for private Snipe-IT
+- storage_state_path: default is auth.json
+
+### Step 8: Setup authentication (VERY IMPORTANT)
+If your Snipe-IT requires login, you must generate auth.json.
+
+If auth.json is missing or expired, printing will fail.
+
+Create a temporary file named create_auth.py in the project root with this code:
+
+```python
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=False)
+    context = browser.new_context()
+    page = context.new_page()
+    page.goto("https://your-snipeit-url/login")
+    print("Log in to Snipe-IT in the opened browser, then press Enter here.")
+    input()
+    context.storage_state(path="auth.json")
+    browser.close()
+```
+
+Run it:
+
+```powershell
+python create_auth.py
+```
+
+This creates auth.json in the project root. Keep config storage_state_path aligned with this file path.
+
+### Step 9: Run the app
+
+```powershell
+python src\main.py
+```
+
+Or run by double-clicking run.bat.
+
+## How To Use
+1. Open a hardware asset page in Snipe-IT.
+2. Copy the full asset URL.
+3. Paste URL into the app.
 4. Click Print Label.
-5. The label is rendered and sent to the configured printer automatically.
+5. Wait for rendering and printing to complete.
+6. Label should print on the configured Brother printer.
 
-### Clipboard Button
-- Click Use Clipboard to paste the current clipboard text into the URL field.
+Use Run Diagnostics first when testing on a new laptop.
 
-### Diagnostics Button
-- Click Run Diagnostics to verify:
-  - Asset ID extraction from URL
-  - Final label URL generation
-  - Printer detection on Windows
-  - Render-only test PDF generation
-- Diagnostics does not send a print job.
+## Troubleshooting (Practical)
 
-## Configuration
-Configuration file: config/config.json
+### Problem: Nothing prints
+- Confirm printer_name exactly matches Windows printer name.
+- Print a normal test page to that printer from Windows.
+- Make sure the Brother printer driver is installed and selected correctly in Windows.
 
-- base_url
-  - Your Snipe-IT base address.
-  - Example: https://snipeit.company.local
-- printer_name
-  - Exact printer name as shown in Windows Printers.
-  - Example: Brother QL-800
-- label_path_template
-  - Label route format. {id} is replaced with the asset ID.
-  - Default: /hardware/{id}/label
-- label_width_mm
-  - Label page width in millimeters for PDF render.
-- label_height_mm
-  - Label page height in millimeters for PDF render.
+### Problem: Authentication required
+- auth.json is missing, expired, or not valid for current Snipe-IT session.
+- Regenerate auth.json and retry.
 
-Additional keys in config are for timeout and parsing behavior, and normally do not need frequent changes.
+### Problem: Blank or incomplete label
+- Increase pre_print_delay_sec in config\config.json (allowed range is 0.5 to 1.0).
+- Verify the Snipe-IT label page fully loads in a normal browser.
 
-Note: the default configuration and URL parsing are hardware-specific. Consumables, accessories, and other Snipe-IT object types are not supported unless you change the parser and label route to match your instance.
+### Problem: Playwright errors
+Run:
 
-## Troubleshooting
-- Printer not found
-  - Confirm the exact printer name in Windows and match printer_name in config/config.json.
+```powershell
+playwright install
+```
 
-- Blank label or wrong scale
-  - Verify label_width_mm and label_height_mm in config/config.json.
-  - Confirm Brother driver media settings match your installed roll.
+Then retry.
 
-- Nothing prints
-  - Ensure Windows has a PDF handler that supports print command integration.
-  - Test printing a normal PDF to the same printer outside the app.
-
-- Playwright error
-  - Run playwright install again.
-  - Confirm internet access if browser runtime must be downloaded.
-
-## Notes
-- Label dimensions in config must match Brother printer media settings.
-- Best results come from correctly configured QL-800 roll/media settings.
-- Print method uses robust PDF fallback for consistent Windows behavior.
+## Important Notes
+- Printer must be installed and working in Windows before running the app.
+- Label dimensions in config must match Brother QL-800 media settings.
+- Works only when the Snipe-IT site is reachable from the laptop.
+- Uses browser rendering flow, not API.
+- Does not depend on a PDF viewer association for printing.
