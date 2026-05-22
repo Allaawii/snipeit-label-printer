@@ -10,6 +10,7 @@ venv/
 env/
 
 # Local configuration (do not commit secrets)
+auth.json
 config/config.json
 
 # Runtime output

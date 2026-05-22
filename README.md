@@ -1,10 +1,12 @@
 # Snipe-IT Label Printer (Brother QL-800)
 
-This app prints Snipe-IT hardware labels on Windows using a browser-rendered PDF flow:
+This is a small inventory-labeling project for a very specific Snipe-IT setup on Windows. I built it for my own hardware tracking workflow, so it assumes a local Brother QL-800 printer, and a configured Snipe-IT instance.
+
+It prints Snipe-IT hardware labels using a browser-rendered PDF flow:
 
 URL -> render label page with Playwright -> save PDF -> rasterize PDF -> send directly to the Brother printer.
 
-It does not use the Snipe-IT API.
+It does not use the Snipe-IT API, and it is meant to be customized for your own inventory environment rather than treated as a generic out-of-the-box tool.
 
 ## Full Setup Guide (Step-by-Step)
 
@@ -58,7 +60,7 @@ playwright install
 copy config\config.example.json config\config.json
 ```
 
-2. Open config\config.json and set:
+2. Open config\config.json and set values for your own environment:
 - base_url: your Snipe-IT base URL, for example https://snipeit.company.local
 - printer_name: must exactly match the printer name in Windows Printers
 - auth_mode: use storage_state for private Snipe-IT
@@ -69,29 +71,20 @@ If your Snipe-IT requires login, you must generate auth.json.
 
 If auth.json is missing or expired, printing will fail.
 
-Create a temporary file named create_auth.py in the project root with this code:
-
-```python
-from playwright.sync_api import sync_playwright
-
-with sync_playwright() as p:
-    browser = p.chromium.launch(headless=False)
-    context = browser.new_context()
-    page = context.new_page()
-    page.goto("https://your-snipeit-url/login")
-    print("Log in to Snipe-IT in the opened browser, then press Enter here.")
-    input()
-    context.storage_state(path="auth.json")
-    browser.close()
-```
-
 Run it:
 
 ```powershell
+$env:SNIPEIT_LOGIN_URL = "https://your-snipeit-url/login"
 python create_auth.py
 ```
 
-This creates auth.json in the project root. Keep config storage_state_path aligned with this file path.
+You can also pass the login URL as the first argument:
+
+```powershell
+python create_auth.py https://your-snipeit-url/login
+```
+
+This creates auth.json in the project root. Keep config storage_state_path aligned with this file path. Do not commit auth.json.
 
 ### Step 9: Run the app
 
