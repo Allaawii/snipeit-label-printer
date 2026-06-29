@@ -11,5 +11,6 @@
     "pre_print_delay_sec": 0.5,
     "label_width_mm": 62.0,
     "label_height_mm": 29.0,
-    "asset_id_regex": "/hardware/(\\d+)(?:/|$)"
+    "asset_id_regex": "/(?:hardware|accessories)/(\\d+)(?:/|$)",
+    "label_logo_url": ""
 }

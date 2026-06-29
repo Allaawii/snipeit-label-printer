@@ -3,7 +3,11 @@ from pathlib import Path
 from tkinter import END, Button, Entry, Frame, Label, StringVar, Tk, messagebox
 from urllib.parse import urlparse
 
-from browser import BrowserRenderError, render_label_to_pdf
+from browser import (
+    BrowserRenderError,
+    render_accessory_label_to_pdf,
+    render_label_to_pdf,
+)
 from printer import (
     PrinterError,
     ensure_printer_exists,
@@ -101,9 +105,15 @@ class LabelPrinterApp:
         worker = threading.Thread(target=self._run_diagnostics_flow, args=(url,), daemon=True)
         worker.start()
 
-    def _build_asset_context(self, input_url: str, config: dict) -> tuple[str, str]:
+    def _build_asset_context(self, input_url: str, config: dict) -> tuple[str, str, str]:
+        """Return (item_type, item_id, target_url).
+
+        For hardware, target_url is the Snipe-IT label page. For accessories
+        (which have no label page), target_url is the accessory page itself,
+        used both to read its name and as the QR destination.
+        """
         asset_id_regex = config.get("asset_id_regex")
-        asset_id = extract_asset_id(input_url, asset_id_regex=asset_id_regex)
+        item_id = extract_asset_id(input_url, asset_id_regex=asset_id_regex)
 
         configured_base = str(config.get("base_url", "")).strip()
         if not configured_base or "your-snipeit.com" in configured_base:
@@ -112,23 +122,37 @@ class LabelPrinterApp:
 
         item_type = detect_item_type(input_url)
         if item_type == "accessories":
-            label_path_template = config.get("accessory_label_path_template", "/accessories/{id}/label")
+            target_url = build_label_url(
+                base_url=configured_base,
+                asset_id=item_id,
+                label_path_template="/accessories/{id}",
+            )
         else:
-            label_path_template = config["label_path_template"]
+            target_url = build_label_url(
+                base_url=configured_base,
+                asset_id=item_id,
+                label_path_template=config["label_path_template"],
+            )
+        return item_type, item_id, target_url
 
-        label_url = build_label_url(
-            base_url=configured_base,
-            asset_id=asset_id,
-            label_path_template=label_path_template,
-        )
-        return asset_id, label_url
+    def _render_pdf_for_item(
+        self, item_type: str, item_id: str, target_url: str, output_dir: Path, config: dict
+    ) -> Path:
+        if item_type == "accessories":
+            return render_accessory_label_to_pdf(
+                accessory_url=target_url,
+                accessory_id=item_id,
+                output_dir=output_dir,
+                config=config,
+            )
+        return render_label_to_pdf(label_url=target_url, output_dir=output_dir, config=config)
 
     def _run_print_flow(self, input_url: str) -> None:
         temp_pdf_path: Path | None = None
 
         try:
             config = load_config(CONFIG_PATH)
-            asset_id, label_url = self._build_asset_context(input_url, config)
+            item_type, item_id, target_url = self._build_asset_context(input_url, config)
 
             printer_name = str(config["printer_name"])
             ensure_printer_exists(printer_name)
@@ -140,7 +164,9 @@ class LabelPrinterApp:
                     "Unsupported print_method. Use 'pdf_fallback' to print reliably on Windows."
                 )
 
-            temp_pdf_path = render_label_to_pdf(label_url=label_url, output_dir=TEMP_DIR, config=config)
+            temp_pdf_path = self._render_pdf_for_item(
+                item_type, item_id, target_url, TEMP_DIR, config
+            )
 
             timeout_sec = int(config.get("print_job_timeout_sec", 30))
             print_pdf_to_printer(
@@ -149,7 +175,8 @@ class LabelPrinterApp:
                 timeout_sec=timeout_sec,
             )
 
-            self.root.after(0, lambda: self.set_status(f"Printed asset {asset_id}"))
+            label_kind = "accessory" if item_type == "accessories" else "asset"
+            self.root.after(0, lambda: self.set_status(f"Printed {label_kind} {item_id}"))
         except (ConfigError, UrlParseError, BrowserRenderError, PrinterError) as exc:
             error_message = str(exc)
             self.root.after(0, lambda msg=error_message: self.set_status(msg, is_error=True))
@@ -167,23 +194,22 @@ class LabelPrinterApp:
     def _run_diagnostics_flow(self, input_url: str) -> None:
         try:
             config = load_config(CONFIG_PATH)
-            asset_id, label_url = self._build_asset_context(input_url, config)
+            item_type, item_id, target_url = self._build_asset_context(input_url, config)
 
             printers = list_printers()
             printer_name = str(config["printer_name"])
             printer_ok = printer_name in printers
 
             diag_dir = TEMP_DIR / "diagnostics"
-            test_pdf_path = render_label_to_pdf(
-                label_url=label_url,
-                output_dir=diag_dir,
-                config=config,
+            test_pdf_path = self._render_pdf_for_item(
+                item_type, item_id, target_url, diag_dir, config
             )
 
+            label_kind = "Accessory" if item_type == "accessories" else "Asset"
             report = "\n".join(
                 [
-                    f"Asset ID: {asset_id}",
-                    f"Label URL: {label_url}",
+                    f"{label_kind} ID: {item_id}",
+                    f"Target URL: {target_url}",
                     f"Configured printer: {printer_name}",
                     f"Printer available: {'Yes' if printer_ok else 'No'}",
                     f"Detected printers ({len(printers)}):",

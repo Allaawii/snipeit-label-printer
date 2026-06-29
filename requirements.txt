@@ -2,3 +2,5 @@ playwright
 pywin32
 PyMuPDF
 Pillow
+qrcode
+python-barcode

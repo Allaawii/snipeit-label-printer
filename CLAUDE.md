@@ -13,6 +13,14 @@ A Windows-only Tkinter GUI that prints Snipe-IT hardware asset labels to a Broth
 
 There is no Snipe-IT API usage — it's entirely browser-rendered.
 
+**Accessories**: Snipe-IT does not render a label page for accessories (no
+`/accessories/{id}/label`, `/qr_code`, or `/barcode` endpoints — all 404). When
+an `/accessories/{id}` URL is pasted, the app builds the label itself (in
+`src/accessory_label.py`) to visually match the hardware label: a self-generated
+QR (linking to the accessory page), a cosmetic Code128 barcode, the accessory
+name read from its page title, and the same IE logo. It then prints through the
+identical PDF→rasterize→GDI pipeline.
+
 ## Setup (Windows)
 
 ```powershell
@@ -34,7 +42,9 @@ python src\main.py
 
 ## Authentication Setup
 
-Required once when Snipe-IT needs login. Creates `auth.json` (gitignored) via interactive browser:
+Required once when Snipe-IT needs login. Creates `auth.json` (gitignored) via interactive browser.
+
+**Must be run in a native Windows PowerShell or CMD window — not WSL.** Under WSL the browser window is invisible, producing a broken session that silently redirects every request to `/login`.
 
 ```powershell
 python create_auth.py https://your-snipeit-url/login
@@ -43,14 +53,15 @@ $env:SNIPEIT_LOGIN_URL = "https://your-snipeit-url/login"
 python create_auth.py
 ```
 
-Regenerate `auth.json` whenever sessions expire.
+Log in fully until the Snipe-IT dashboard is visible, then press Enter in the terminal. Regenerate `auth.json` whenever the session expires.
 
 ## Architecture
 
 | File | Responsibility |
 |------|---------------|
 | `src/main.py` | Tkinter GUI (`LabelPrinterApp`); orchestrates print and diagnostics flows on daemon threads; all UI updates go through `root.after()` |
-| `src/browser.py` | Playwright headless rendering; `render_label_to_pdf()` returns a temp PDF path |
+| `src/browser.py` | Playwright headless rendering; `render_label_to_pdf()` (hardware) and `render_accessory_label_to_pdf()` (accessories) return a temp PDF path |
+| `src/accessory_label.py` | Builds accessory label HTML (cloned from the hardware label CSS) with a generated QR + cosmetic barcode |
 | `src/printer.py` | Win32 printing; `print_pdf_to_printer()` rasterizes PDF → trims whitespace → draws via GDI |
 | `src/utils.py` | Config loading, URL parsing, asset ID extraction, label URL building |
 | `create_auth.py` | One-time interactive Playwright login to capture session cookies into `auth.json` |
@@ -60,7 +71,7 @@ Regenerate `auth.json` whenever sessions expire.
 - **Windows-only**: depends on `pywin32` (`win32print`, `win32ui`, `win32con`, `ImageWin`)
 - **Only `pdf_fallback` print method is supported**: browser-level silent printing cannot reliably target a specific Windows printer
 - `base_url` in config: if it contains `"your-snipeit.com"`, the app silently falls back to the origin of the input URL
-- `label_path_template` must contain `{id}` placeholder; `asset_id_regex` is optional (defaults to `/hardware/(\d+)`)
+- `label_path_template` must contain `{id}` placeholder; `asset_id_regex` is optional (defaults to matching both `/hardware/{id}` and `/accessories/{id}`)
 - `pre_print_delay_sec` is clamped to `[0.5, 1.0]` to let dynamic content (QR codes) settle before PDF capture
 - `pdf_scale` is clamped to `[0.8, 1.5]`
 - Temp PDFs are written to `temp/` and deleted after printing; diagnostics saves to `temp/diagnostics/` and keeps them
@@ -69,7 +80,7 @@ Regenerate `auth.json` whenever sessions expire.
 
 Required: `base_url`, `printer_name`, `label_path_template`, `browser`, `print_method`
 
-Notable optional keys: `auth_mode` (`none` or `storage_state`), `storage_state_path` (default `auth.json`), `label_width_mm` (default `102.0`), `label_height_mm` (default `35.0`), `pre_print_delay_sec`, `pdf_scale`, `page_load_timeout_ms`, `print_job_timeout_sec`, `asset_id_regex`
+Notable optional keys: `auth_mode` (`none` or `storage_state`), `storage_state_path` (default `auth.json`), `label_width_mm` (default `102.0`), `label_height_mm` (default `35.0`), `pre_print_delay_sec`, `pdf_scale`, `page_load_timeout_ms`, `print_job_timeout_sec`, `asset_id_regex` (default matches both `/hardware/{id}` and `/accessories/{id}`), `label_logo_url` (logo for accessory labels; absolute URL or origin-relative path, default is the configured Snipe-IT label logo)
 
 ## Gitignored Files
 

@@ -1,136 +1,108 @@
 # Snipe-IT Label Printer (Brother QL-800)
 
-This is a small inventory-labeling project for a very specific Snipe-IT setup on Windows. I built it for my own hardware tracking workflow, so it assumes a local Brother QL-800 printer, and a configured Snipe-IT instance.
+A Windows inventory-labeling tool for Snipe-IT. Paste a hardware asset or accessory URL, click Print Label, and a label prints on the Brother QL-800.
 
-It prints Snipe-IT hardware labels using a browser-rendered PDF flow:
+It does not use the Snipe-IT API. The print pipeline is:
 
-URL -> render label page with Playwright -> save PDF -> rasterize PDF -> send directly to the Brother printer.
+URL → render page with Playwright → save PDF → rasterize PDF → send directly to the Brother printer via Win32 GDI.
 
-It does not use the Snipe-IT API, and it is meant to be customized for your own inventory environment rather than treated as a generic out-of-the-box tool.
+For accessories (which have no native Snipe-IT label page), the app generates the label itself — same layout as hardware: QR code linking to the accessory page, name, IE logo, and cosmetic barcode.
 
 ## Full Setup Guide (Step-by-Step)
 
 ### Step 1: Install Python
 1. Go to https://www.python.org/downloads/
 2. Install Python 3.10 or newer.
-3. During installation, enable Add Python to PATH.
-4. Open Command Prompt and verify:
+3. During installation, enable **Add Python to PATH**.
+4. Verify in Command Prompt:
 
 ```powershell
 python --version
 ```
 
 ### Step 2: Clone repo
-Run these commands:
 
 ```powershell
 git clone <repo_url>
 cd snipeit-label-printer
 ```
 
-### Step 3: Create virtual environment
+### Step 3: Create and activate virtual environment
 
 ```powershell
 python -m venv venv
-```
-
-### Step 4: Activate virtual environment
-Windows command:
-
-```powershell
 venv\Scripts\activate
 ```
 
-### Step 5: Install dependencies
+### Step 4: Install dependencies
 
 ```powershell
 pip install -r requirements.txt
-```
-
-### Step 6: Install Playwright browsers
-
-```powershell
 playwright install
 ```
 
-### Step 7: Configure app
-1. Copy config file:
+### Step 5: Configure app
 
 ```powershell
 copy config\config.example.json config\config.json
 ```
 
-2. Open config\config.json and set values for your own environment:
-- base_url: your Snipe-IT base URL, for example https://snipeit.company.local
-- printer_name: must exactly match the printer name in Windows Printers
-- auth_mode: use storage_state for private Snipe-IT
-- storage_state_path: default is auth.json
+Open `config\config.json` and set:
+- `base_url` — your Snipe-IT base URL including port, e.g. `https://snipeit.company.local:8085`
+- `printer_name` — must exactly match the printer name shown in Windows Printers & Scanners
+- `auth_mode` — use `storage_state` if your Snipe-IT requires login
+- `storage_state_path` — default is `auth.json`
 
-### Step 8: Setup authentication (VERY IMPORTANT)
-If your Snipe-IT requires login, you must generate auth.json.
+### Step 6: Set up authentication
 
-If auth.json is missing or expired, printing will fail.
-
-Run it:
-
-```powershell
-$env:SNIPEIT_LOGIN_URL = "https://your-snipeit-url/login"
-python create_auth.py
-```
-
-You can also pass the login URL as the first argument:
+Required if Snipe-IT requires login. Run this in a **native Windows PowerShell or CMD window** (not WSL):
 
 ```powershell
 python create_auth.py https://your-snipeit-url/login
 ```
 
-This creates auth.json in the project root. Keep config storage_state_path aligned with this file path. Do not commit auth.json.
+A Chromium window will open. Log in fully until you see the Snipe-IT dashboard, then press Enter in the terminal. This saves `auth.json`. Re-run whenever the session expires.
 
-### Step 9: Run the app
+### Step 7: Run the app
 
 ```powershell
 python src\main.py
 ```
 
-Or run by double-clicking run.bat.
+Or double-click `run.bat`.
 
 ## How To Use
-1. Open a hardware asset page in Snipe-IT.
-2. Copy the full asset URL.
-3. Paste URL into the app.
-4. Click Print Label.
-5. Wait for rendering and printing to complete.
-6. Label should print on the configured Brother printer.
 
-Use Run Diagnostics first when testing on a new laptop.
+1. Open a hardware asset **or** accessory page in Snipe-IT.
+2. Copy the full URL (e.g. `https://snipeit.example.com/hardware/91` or `/accessories/81`).
+3. Paste it into the app.
+4. Click **Print Label**.
+5. The label prints on the configured Brother printer.
 
-## Troubleshooting (Practical)
+Use **Run Diagnostics** first when testing — it renders a preview PDF without printing.
 
-### Problem: Nothing prints
-- Confirm printer_name exactly matches Windows printer name.
-- Print a normal test page to that printer from Windows.
-- Make sure the Brother printer driver is installed and selected correctly in Windows.
+## Troubleshooting
 
-### Problem: Authentication required
-- auth.json is missing, expired, or not valid for current Snipe-IT session.
-- Regenerate auth.json and retry.
+### Nothing prints
+- Confirm `printer_name` exactly matches the Windows printer name.
+- Print a test page to that printer from Windows to verify the driver works.
 
-### Problem: Blank or incomplete label
-- Increase pre_print_delay_sec in config\config.json (allowed range is 0.5 to 1.0).
+### Authentication required
+- `auth.json` is missing, expired, or was generated inside WSL (invisible browser = incomplete login).
+- Re-run `create_auth.py` in a native Windows PowerShell window, log in fully, then retry.
+
+### Blank or incomplete label
+- Increase `pre_print_delay_sec` in `config.json` (allowed range: 0.5–1.0).
 - Verify the Snipe-IT label page fully loads in a normal browser.
 
-### Problem: Playwright errors
-Run:
+### Playwright errors
 
 ```powershell
 playwright install
 ```
 
-Then retry.
-
-## Important Notes
-- Printer must be installed and working in Windows before running the app.
-- Label dimensions in config must match Brother QL-800 media settings.
-- Works only when the Snipe-IT site is reachable from the laptop.
-- Uses browser rendering flow, not API.
-- Does not depend on a PDF viewer association for printing.
+## Notes
+- Windows-only: depends on `pywin32` for Win32 GDI printing.
+- Label dimensions in config must match the Brother QL-800 media loaded.
+- Works only when the Snipe-IT site is reachable from the machine.
+- `auth.json` and `config/config.json` are gitignored — never commit them.
