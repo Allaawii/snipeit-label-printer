@@ -9,7 +9,7 @@ __pycache__/
 venv/
 env/
 
-# Local configuration (do not commit secrets)
+# Local configuration
 auth.json
 config/config.json
 

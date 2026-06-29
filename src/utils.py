@@ -54,11 +54,11 @@ def extract_asset_id(asset_url: str, asset_id_regex: str | None = None) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise UrlParseError("Invalid URL format. Expected http(s)://...")
 
-    regex_pattern = asset_id_regex or r"/hardware/(\d+)(?:/|$)"
+    regex_pattern = asset_id_regex or r"/(?:hardware|accessories)/(\d+)(?:/|$)"
     match = re.search(regex_pattern, parsed.path)
     if not match:
         raise UrlParseError(
-            "Cannot extract asset ID from URL. Expected path like /hardware/123"
+            "Cannot extract asset ID from URL. Expected path like /hardware/123 or /accessories/123"
         )
 
     asset_id = match.group(1)
@@ -66,6 +66,13 @@ def extract_asset_id(asset_url: str, asset_id_regex: str | None = None) -> str:
         raise UrlParseError("Extracted asset ID is not numeric")
 
     return asset_id
+
+
+def detect_item_type(asset_url: str) -> str:
+    parsed = urlparse(asset_url.strip())
+    if re.search(r"/accessories/\d+", parsed.path):
+        return "accessories"
+    return "hardware"
 
 
 def build_label_url(base_url: str, asset_id: str, label_path_template: str) -> str:

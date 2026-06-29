@@ -10,7 +10,7 @@ from printer import (
     list_printers,
     print_pdf_to_printer,
 )
-from utils import ConfigError, UrlParseError, build_label_url, extract_asset_id, load_config
+from utils import ConfigError, UrlParseError, build_label_url, detect_item_type, extract_asset_id, load_config
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -30,7 +30,7 @@ class LabelPrinterApp:
         container = Frame(root, padx=12, pady=12)
         container.pack(fill="both", expand=True)
 
-        Label(container, text="Snipe-IT Asset URL:").pack(anchor="w")
+        Label(container, text="Snipe-IT Asset / Accessory URL:").pack(anchor="w")
 
         self.url_entry = Entry(container, width=72)
         self.url_entry.pack(fill="x", pady=(4, 10))
@@ -110,10 +110,16 @@ class LabelPrinterApp:
             parsed_input = urlparse(input_url)
             configured_base = f"{parsed_input.scheme}://{parsed_input.netloc}"
 
+        item_type = detect_item_type(input_url)
+        if item_type == "accessories":
+            label_path_template = config.get("accessory_label_path_template", "/accessories/{id}/label")
+        else:
+            label_path_template = config["label_path_template"]
+
         label_url = build_label_url(
             base_url=configured_base,
             asset_id=asset_id,
-            label_path_template=config["label_path_template"],
+            label_path_template=label_path_template,
         )
         return asset_id, label_url
 
