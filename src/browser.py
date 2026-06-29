@@ -178,7 +178,10 @@ def render_accessory_label_to_pdf(
             try:
                 context = browser.new_context(**context_kwargs)
                 page = context.new_page()
-                page.goto(accessory_url, wait_until="networkidle", timeout=timeout_ms)
+                # domcontentloaded is enough — we only need the page title.
+                # networkidle would fail on full Snipe-IT pages that have AJAX
+                # polling or CDN sub-requests that don't resolve in headless mode.
+                page.goto(accessory_url, wait_until="domcontentloaded", timeout=timeout_ms)
                 _ensure_not_login_page(page)
 
                 accessory_name = _accessory_name_from_title(page.title())
@@ -204,7 +207,8 @@ def render_accessory_label_to_pdf(
                     accessory_url=accessory_url,
                     logo_data_uri=logo_data_uri,
                 )
-                page.set_content(html, wait_until="networkidle", timeout=timeout_ms)
+                # All content is data URIs so "load" fires immediately.
+                page.set_content(html, wait_until="load", timeout=timeout_ms)
                 _capture_pdf(page, pdf_path, config)
             finally:
                 browser.close()

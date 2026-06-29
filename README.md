@@ -76,8 +76,9 @@ Or double-click `run.bat`.
 1. Open a hardware asset **or** accessory page in Snipe-IT.
 2. Copy the full URL (e.g. `https://snipeit.example.com/hardware/91` or `/accessories/81`).
 3. Paste it into the app.
-4. Click **Print Label**.
-5. The label prints on the configured Brother printer.
+4. Set **Copies** if you want more than one of the same label (default is 1).
+5. Click **Print Label**.
+6. The label prints on the configured Brother printer.
 
 Use **Run Diagnostics** first when testing — it renders a preview PDF without printing.
 

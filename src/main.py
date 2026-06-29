@@ -1,6 +1,6 @@
 import threading
 from pathlib import Path
-from tkinter import END, Button, Entry, Frame, Label, StringVar, Tk, messagebox
+from tkinter import END, Button, Entry, Frame, Label, Spinbox, StringVar, Tk, messagebox
 from urllib.parse import urlparse
 
 from browser import (
@@ -26,10 +26,11 @@ class LabelPrinterApp:
     def __init__(self, root: Tk):
         self.root = root
         self.root.title("Snipe-IT Label Printer")
-        self.root.geometry("560x220")
+        self.root.geometry("560x250")
         self.root.resizable(False, False)
 
         self.status_var = StringVar(value="Ready")
+        self.copies_var = StringVar(value="1")
 
         container = Frame(root, padx=12, pady=12)
         container.pack(fill="both", expand=True)
@@ -38,6 +39,19 @@ class LabelPrinterApp:
 
         self.url_entry = Entry(container, width=72)
         self.url_entry.pack(fill="x", pady=(4, 10))
+
+        copies_row = Frame(container)
+        copies_row.pack(fill="x", pady=(0, 10))
+        Label(copies_row, text="Copies:").pack(side="left")
+        self.copies_spin = Spinbox(
+            copies_row,
+            from_=1,
+            to=99,
+            width=5,
+            textvariable=self.copies_var,
+            justify="center",
+        )
+        self.copies_spin.pack(side="left", padx=(6, 0))
 
         controls = Frame(container)
         controls.pack(fill="x")
@@ -89,12 +103,23 @@ class LabelPrinterApp:
         except Exception:
             self.set_status("Clipboard is empty or unavailable", is_error=True)
 
+    def _get_copies(self) -> int:
+        """Read and clamp the copies field to a sane integer in [1, 99]."""
+        try:
+            copies = int(str(self.copies_var.get()).strip())
+        except (ValueError, TypeError):
+            copies = 1
+        return max(1, min(99, copies))
+
     def on_print_clicked(self) -> None:
         url = self.url_entry.get().strip()
+        copies = self._get_copies()
         self._set_controls_state("disabled")
         self.set_status("Preparing print job...")
 
-        worker = threading.Thread(target=self._run_print_flow, args=(url,), daemon=True)
+        worker = threading.Thread(
+            target=self._run_print_flow, args=(url, copies), daemon=True
+        )
         worker.start()
 
     def on_diagnostics_clicked(self) -> None:
@@ -147,7 +172,7 @@ class LabelPrinterApp:
             )
         return render_label_to_pdf(label_url=target_url, output_dir=output_dir, config=config)
 
-    def _run_print_flow(self, input_url: str) -> None:
+    def _run_print_flow(self, input_url: str, copies: int = 1) -> None:
         temp_pdf_path: Path | None = None
 
         try:
@@ -164,19 +189,31 @@ class LabelPrinterApp:
                     "Unsupported print_method. Use 'pdf_fallback' to print reliably on Windows."
                 )
 
+            # Render the label once, then send it to the printer for each copy.
             temp_pdf_path = self._render_pdf_for_item(
                 item_type, item_id, target_url, TEMP_DIR, config
             )
 
             timeout_sec = int(config.get("print_job_timeout_sec", 30))
-            print_pdf_to_printer(
-                pdf_path=temp_pdf_path,
-                printer_name=printer_name,
-                timeout_sec=timeout_sec,
-            )
+            for copy_index in range(copies):
+                if copies > 1:
+                    self.root.after(
+                        0,
+                        lambda i=copy_index: self.set_status(
+                            f"Printing copy {i + 1} of {copies}..."
+                        ),
+                    )
+                print_pdf_to_printer(
+                    pdf_path=temp_pdf_path,
+                    printer_name=printer_name,
+                    timeout_sec=timeout_sec,
+                )
 
             label_kind = "accessory" if item_type == "accessories" else "asset"
-            self.root.after(0, lambda: self.set_status(f"Printed {label_kind} {item_id}"))
+            copies_note = f" ({copies} copies)" if copies > 1 else ""
+            self.root.after(
+                0, lambda: self.set_status(f"Printed {label_kind} {item_id}{copies_note}")
+            )
         except (ConfigError, UrlParseError, BrowserRenderError, PrinterError) as exc:
             error_message = str(exc)
             self.root.after(0, lambda msg=error_message: self.set_status(msg, is_error=True))
@@ -235,11 +272,13 @@ class LabelPrinterApp:
         self.print_btn.config(state="normal")
         self.clipboard_btn.config(state="normal")
         self.diagnostics_btn.config(state="normal")
+        self.copies_spin.config(state="normal")
 
         if state != "normal":
             self.print_btn.config(state=state)
             self.clipboard_btn.config(state=state)
             self.diagnostics_btn.config(state=state)
+            self.copies_spin.config(state=state)
 
 
 def main() -> None:
