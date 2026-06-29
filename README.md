@@ -105,4 +105,3 @@ playwright install
 - Windows-only: depends on `pywin32` for Win32 GDI printing.
 - Label dimensions in config must match the Brother QL-800 media loaded.
 - Works only when the Snipe-IT site is reachable from the machine.
-- `auth.json` and `config/config.json` are gitignored — never commit them.
